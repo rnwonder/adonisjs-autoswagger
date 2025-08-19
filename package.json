@@ -1,6 +1,6 @@
 {
   "name": "@rnwonder/adonis-autoswagger",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Auto-Generate swagger docs for AdonisJS",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -36,6 +36,11 @@
   "files": [
     "/dist"
   ],
+  "private": false,
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "prettier": {
     "trailingComma": "es5",
     "semi": true,
@@ -43,6 +48,5 @@
     "quoteProps": "consistent",
     "bracketSpacing": true,
     "arrowParens": "always"
-  },
-  "packageManager": "pnpm@8.11.0"
+  }
 }
