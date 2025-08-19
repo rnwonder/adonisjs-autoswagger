@@ -2,18 +2,18 @@
 Adonis AutoSwagger <br />
 <img src="https://upload.wikimedia.org/wikipedia/commons/a/ab/Swagger-logo.png" height="50" />
 </h1>
-
+<!-- 
 [![Version](https://img.shields.io/github/tag/ad-on-is/adonis-autoswagger.svg?style=flat?branch=main)]()
 [![GitHub stars](https://img.shields.io/github/stars/ad-on-is/adonis-autoswagger.svg?style=social&label=Star)]()
 [![GitHub watchers](https://img.shields.io/github/watchers/ad-on-is/adonis-autoswagger.svg?style=social&label=Watch)]()
-[![GitHub forks](https://img.shields.io/github/forks/ad-on-is/adonis-autoswagger.svg?style=social&label=Fork)]()
+[![GitHub forks](https://img.shields.io/github/forks/ad-on-is/adonis-autoswagger.svg?style=social&label=Fork)]() -->
 
 ### Auto-Generate swagger docs for AdonisJS
 
 ## 💻️ Install
 
 ```bash
-pnpm i adonis-autoswagger #using pnpm
+pnpm i @rnwonder/adonis-autoswagger #using pnpm
 ```
 
 ---
@@ -183,13 +183,14 @@ Route.get("/docs", async () => {
 
 ### Custom Paths in adonisJS v6
 
-AutoSwagger supports the paths set in `package.json`. Interfaces are expected to be in `app/interfaces`. However, you can override this, by modifying package.json as follows.
+AutoSwagger supports the paths set in `package.json`. Interfaces are expected to be in `app/interfaces`, also all types and enums should be under `app/types`. However, you can override this, by modifying package.json as follows. 
 
 ```json
 //...
 "imports": {
   // ...
-  "#interfaces/*": "./app/custom/path/interfaces/*.js"
+  "#interfaces/*": "./app/custom/path/interfaces/*.js",
+  "#types/*": "./app/custom/path/types/*.js"
   // ...
 }
 //...
@@ -584,3 +585,5 @@ cp swagger.yml build/
 
 - Interfaces with objects are not working like `interface Test {foo: {bar: string}}`
   - Solution, just extract the object as it's own interface
+- Models with Union types like `status: "paid" | "not paid"` will throw error
+  - Solution, just extract the Union as its own type
