@@ -1,0 +1,91 @@
+name: Deploy
+run-name: Deploying to npmjs 🥹🤞
+on:
+  push:
+    tags:
+      - "*"
+jobs:
+  Deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch full history for changelog generation
+
+      - name: Validate semantic version tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          if [[ ! $TAG =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "❌ Tag '$TAG' is not a valid semantic version (e.g., v1.0.0, 1.2.3-beta.1)"
+            exit 1
+          fi
+          echo "✅ Valid semantic version: $TAG"
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "20.x"
+          registry-url: "https://registry.npmjs.com"
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Validate package.json version matches tag
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION=${RELEASE_TAG#v}  # Remove 'v' prefix if present
+          if [[ "$PACKAGE_VERSION" != "$TAG_VERSION" ]]; then
+            echo "❌ Package version ($PACKAGE_VERSION) doesn't match tag version ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "✅ Package version matches tag: $PACKAGE_VERSION"
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Generate changelog
+        run: |
+          echo "# Changelog for $RELEASE_TAG" > RELEASE_CHANGELOG.md
+          echo "" >> RELEASE_CHANGELOG.md
+
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+
+          if [[ -n "$PREV_TAG" ]]; then
+            echo "## Changes since $PREV_TAG" >> RELEASE_CHANGELOG.md
+            echo "" >> RELEASE_CHANGELOG.md
+            git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD >> RELEASE_CHANGELOG.md
+          else
+            echo "## Initial release" >> RELEASE_CHANGELOG.md
+            echo "" >> RELEASE_CHANGELOG.md
+            git log --pretty=format:"- %s (%h)" >> RELEASE_CHANGELOG.md
+          fi
+
+          echo "" >> RELEASE_CHANGELOG.md
+          echo "Generated on $(date)" >> RELEASE_CHANGELOG.md
+
+          echo "📝 Generated changelog:"
+          cat RELEASE_CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          release_name: Release ${{ env.RELEASE_TAG }}
+          body_path: RELEASE_CHANGELOG.md
+          draft: false
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+
+      - name: Configure git
+        run: |
+          git config user.email "deploy@github"
+          git config user.name "GitHub Action"
+
+      - name: Publish to npm
+        run: pnpm publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
