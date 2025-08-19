@@ -3,9 +3,9 @@ import fs from "fs";
 import path from "path";
 import util from "util";
 import HTTPStatusCode from "http-status-code";
-import isEmpty from 'lodash/isEmpty'
-import isUndefined from 'lodash/isUndefined'
-import uniq from 'lodash/uniq'
+import isEmpty from "lodash/isEmpty";
+import isUndefined from "lodash/isUndefined";
+import uniq from "lodash/uniq";
 import { existsSync } from "fs";
 import { scalarCustomCss } from "./scalarCustomCss";
 import { serializeV6Middleware, serializeV6Handler } from "./adonishelpers";
@@ -321,16 +321,44 @@ export class AutoSwagger {
 
     for await (const route of routes) {
       let ignore = false;
-      for (const i of options.ignore) {
-        if (
-          route.pattern == i ||
-          (i.endsWith("*") && route.pattern.startsWith(i.slice(0, -1))) ||
-          (i.startsWith("*") && route.pattern.endsWith(i.slice(1)))
-        ) {
-          ignore = true;
-          break;
+
+      // Check default ignore patterns (unless disabled)
+      if (!options.ignoreDefaultPatterns) {
+        const defaultIgnorePatterns = [
+          "/uploads/*",
+          "/assets/*",
+          "/static/*",
+          "/public/*",
+        ];
+
+        for (const pattern of defaultIgnorePatterns) {
+          if (
+            route.pattern == pattern ||
+            (pattern.endsWith("*") &&
+              route.pattern.startsWith(pattern.slice(0, -1))) ||
+            (pattern.startsWith("*") &&
+              route.pattern.endsWith(pattern.slice(1)))
+          ) {
+            ignore = true;
+            break;
+          }
         }
       }
+
+      // Check user-defined ignore patterns
+      if (!ignore) {
+        for (const i of options.ignore) {
+          if (
+            route.pattern == i ||
+            (i.endsWith("*") && route.pattern.startsWith(i.slice(0, -1))) ||
+            (i.startsWith("*") && route.pattern.endsWith(i.slice(1)))
+          ) {
+            ignore = true;
+            break;
+          }
+        }
+      }
+
       if (ignore) continue;
 
       let security = [];
@@ -401,7 +429,7 @@ export class AutoSwagger {
         let actionParams = {};
 
         if (action !== "" && typeof customAnnotations[action] !== "undefined") {
-          description = customAnnotations[action].description;
+          description = customAnnotations[action].description || "";
           summary = customAnnotations[action].summary;
           operationId = customAnnotations[action].operationId;
           responses = { ...responses, ...customAnnotations[action].responses };
@@ -439,40 +467,46 @@ export class AutoSwagger {
           if (
             typeof responses[responseCodes[method]] !== "undefined" &&
             typeof responses[responseCodes[method]]["description"] !==
-              "undefined"
+              "undefined" &&
+            (!description || description.trim() === "")
           ) {
             description = responses[responseCodes[method]]["description"];
           }
         }
 
         if (action !== "" && summary === "") {
-          // Solve toLowerCase undefined exception
-          // https://github.com/ad-on-is/adonis-autoswagger/issues/28
-          tags[0] = tags[0] ?? "";
+          // Use description as summary if available, otherwise use defaults
+          if (description && description.trim() !== "") {
+            summary = description.trim();
+          } else {
+            // Solve toLowerCase undefined exception
+            // https://github.com/ad-on-is/adonis-autoswagger/issues/28
+            tags[0] = tags[0] ?? "";
 
-          switch (action) {
-            case "index":
-              summary = "Get a list of " + tags[0].toLowerCase();
-              break;
-            case "show":
-              summary = "Get a single instance of " + tags[0].toLowerCase();
-              break;
-            case "update":
-              summary = "Update " + tags[0].toLowerCase();
-              break;
-            case "destroy":
-              summary = "Delete " + tags[0].toLowerCase();
-              break;
-            case "store":
-              summary = "Create " + tags[0].toLowerCase();
-              break;
-            // frontend defaults
-            case "create":
-              summary = "Create (Frontend) " + tags[0].toLowerCase();
-              break;
-            case "edit":
-              summary = "Update (Frontend) " + tags[0].toLowerCase();
-              break;
+            switch (action) {
+              case "index":
+                summary = "Get a list of " + tags[0].toLowerCase();
+                break;
+              case "show":
+                summary = "Get a single instance of " + tags[0].toLowerCase();
+                break;
+              case "update":
+                summary = "Update " + tags[0].toLowerCase();
+                break;
+              case "destroy":
+                summary = "Delete " + tags[0].toLowerCase();
+                break;
+              case "store":
+                summary = "Create " + tags[0].toLowerCase();
+                break;
+              // frontend defaults
+              case "create":
+                summary = "Create (Frontend) " + tags[0].toLowerCase();
+                break;
+              case "edit":
+                summary = "Update (Frontend) " + tags[0].toLowerCase();
+                break;
+            }
           }
         }
 
@@ -480,7 +514,12 @@ export class AutoSwagger {
         let m = {
           summary: `${summary}${action !== "" ? ` (${action})` : "route"}`,
           description:
-            description + "\n\n _" + sourceFile + "_ - **" + action + "**",
+            (description ? description + "\n\n" : "") +
+            "_" +
+            sourceFile +
+            "_ - **" +
+            action +
+            "**",
           operationId: operationId,
           parameters: parameters,
           tags: tags,
@@ -617,13 +656,18 @@ export class AutoSwagger {
       },
     };
 
+    const enums = await this.getEnums();
+    
+    // Update ModelParser with enums for better example generation
+    this.modelParser = new ModelParser(this.options.snakeCase, enums);
+    
     schemas = {
       ...schemas,
       ...(await this.getInterfaces()),
       ...(await this.getSerializers()),
       ...(await this.getModels()),
       ...(await this.getValidators()),
-      ...(await this.getEnums()),
+      ...enums,
     };
 
     return schemas;

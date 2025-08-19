@@ -68,6 +68,7 @@ export default {
   defaultSecurityScheme: "BearerAuth", // optional
   persistAuthorization: true, // persist authorization between reloads on the swagger page
   showFullPath: false, // the path displayed after endpoint summary
+  ignoreDefaultPatterns: false, // ignore default patterns such as /uploads/* /assets/* /static/* /public/*
 };
 ```
 
@@ -183,7 +184,7 @@ Route.get("/docs", async () => {
 
 ### Custom Paths in adonisJS v6
 
-AutoSwagger supports the paths set in `package.json`. Interfaces are expected to be in `app/interfaces`, also all types and enums should be under `app/types`. However, you can override this, by modifying package.json as follows. 
+AutoSwagger supports the paths set in `package.json`. Interfaces are expected to be in `app/interfaces`, also all types and enums should be under `app/types`. However, you can override this, by modifying package.json as follows.
 
 ```json
 //...
@@ -300,11 +301,91 @@ This format should be a valid openapi 3.x json.
 
 @responseBody <status> - <Model>.only(property1, property2) // pick only specific properties
 
+@responseBody <status> - <Model[]>.with(relations).only(relation.field1, relation.field2) // include relations but only show specific fields from each relation
+
 @requestBody <status> <myCustomValidator> // returns a validator object
 
 @responseBody <status> - {"foo": "bar", "baz": "<Model>"} //returns custom json object and also parses the model
 @responseBody <status> - ["foo", "bar"] //returns custom json array
 ```
+
+### Advanced Relation Field Selection
+
+You can now combine `.with()` and `.only()` to include specific relations while selecting only certain fields from each relation. This is particularly useful for optimizing API responses by including only the data you need.
+
+#### Basic Syntax
+
+```ts
+@responseBody <status> - <Model[]>.with(relation1, relation2.nestedRelation).only(field1, field2, relation1.field1, relation2.nestedRelation.field1)
+```
+
+#### How it works
+
+- **`.with()`** specifies which relations to include
+- **`.only()`** specifies which fields to show from the model and its relations
+- **Base model fields** are always included unless explicitly filtered
+- **Relations** are only included if specified in `.with()` or have nested field specifications in `.only()`
+- **Relation fields** are filtered based on the `.only()` specifications
+
+#### Examples
+
+**Example 1: Basic relation field selection**
+
+```ts
+/**
+ * @responseBody 200 - <User[]>.with(profile, posts).only(id, name, profile.bio, profile.avatar, posts.title, posts.createdAt)
+ */
+```
+
+Result: Users with only `id` and `name`, profile with only `bio` and `avatar`, posts with only `title` and `createdAt`.
+
+**Example 2: Nested relation field selection**
+
+```ts
+/**
+ * @responseBody 200 - <Order[]>.with(buyer, seller.user, products).only(id, status, buyer.firstName, buyer.lastName, seller.businessName, seller.user.email, products.name, products.price)
+ */
+```
+
+Result: Orders with basic fields, buyer names, seller business name and user email, product name and price.
+
+**Example 3: Deep nested relations**
+
+```ts
+/**
+ * @responseBody 200 - <Post[]>.with(author.profile, comments.author).only(title, content, author.name, author.profile.bio, comments.text, comments.author.name)
+ */
+```
+
+Result: Posts with title/content, author name and bio, comments with text and author names.
+
+**Example 4: Mixed field selection (your working example)**
+
+```ts
+/**
+ * @responseBody 200 - <HeadsUp[]>.with(funder, rotorParticipant.subscription, rotorParticipant.rotor, groupMember.group.creator, order.products, order.buyer, order.seller.user).only(funder, rotorParticipant.id, rotorParticipant.subscription.id, rotorParticipant.subscription.nextPaymentDate, rotorParticipant.rotor.name, groupMember.group.creator.firstName, order.products.name, order.buyer.firstName, order.seller.user.email).paginated()
+ */
+```
+
+Result: HeadsUps with all base fields, complete funder object, selected fields from nested relations.
+
+#### Important Notes
+
+1. **Base model fields**: Always included unless you want to restrict them (rare use case)
+2. **Relation inclusion**: Relations must be specified in `.with()` to be included
+3. **Field filtering**: Use `.only()` to specify exactly which fields you want from each relation
+4. **Nested paths**: Use dot notation like `relation.nestedRelation.field` for deep nesting
+5. **Complete relations**: If a relation is in `.with()` but has no `.only()` specifications, all its fields are included
+6. **Missing fields**: If you specify a field that doesn't exist in the schema, it will be ignored
+
+#### Field Selection Rules
+
+- **Include all relation fields**: `.with(relation)` (no `.only()` for that relation)
+- **Include specific relation fields**: `.with(relation).only(relation.field1, relation.field2)`
+- **Include nested relation fields**: `.with(relation.nested).only(relation.nested.field1)`
+- **Include complete nested relation**: `.with(relation.nested)` (no `.only()` for nested relation)
+
+````
 
 ## `@paramPath` and `@paramQuery` examples
 
@@ -319,7 +400,7 @@ This format should be a valid openapi 3.x json.
 @paramQuery q - Search term - @type(string) @required
 @paramQuery page - the Page number - @type(number)
 
-```
+````
 
 ## `@requestBody` examples
 

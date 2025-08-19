@@ -20,6 +20,7 @@ export interface options {
   productionEnv?: string;
   authMiddlewares?: string[];
   defaultSecurityScheme?: string;
+  ignoreDefaultPatterns?: boolean; // Option to disable default ignore patterns
 }
 
 export interface common {

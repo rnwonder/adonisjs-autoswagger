@@ -184,6 +184,25 @@ export default class ExampleGenerator {
     let only = onl.toString().split(",");
     only = only.length === 1 && only[0] === "" ? [] : only;
 
+    // Extract base relation names from nested specifications
+    // e.g., "rotorParticipant.subscription" -> "rotorParticipant"
+    const baseRelations = include
+      .filter((rel) => rel.includes("."))
+      .map((rel) => rel.split(".")[0])
+      .filter((rel, index, arr) => arr.indexOf(rel) === index); // remove duplicates
+
+    // Also extract base relations from only specifications
+    // e.g., "rotorParticipant.subscription.id" -> "rotorParticipant"
+    const baseRelationsFromOnly = only
+      .filter((field) => field.includes("."))
+      .map((field) => field.split(".")[0])
+      .filter((rel, index, arr) => arr.indexOf(rel) === index); // remove duplicates
+
+    // Combine both base relations arrays
+    const allBaseRelations = [
+      ...new Set([...baseRelations, ...baseRelationsFromOnly]),
+    ];
+
     if (typeof properties === "undefined") return null;
 
     // skip nested if not requested
@@ -192,10 +211,12 @@ export default class ExampleGenerator {
       schema !== "" &&
       parent.includes(".") &&
       this.schemas[schema].description.includes("Model") &&
-      !inc.includes("relations") &&
-      !inc.includes(parent) &&
-      !inc.includes(parent + ".relations") &&
-      !inc.includes(first + ".relations")
+      !include.includes("relations") &&
+      !include.includes(parent) &&
+      !include.includes(parent + ".relations") &&
+      !include.includes(first + ".relations") &&
+      !include.some((rel) => rel.startsWith(parent + ".")) &&
+      !only.some((field) => field.startsWith(parent + "."))
     ) {
       return null;
     }
@@ -230,16 +251,49 @@ export default class ExampleGenerator {
       let rel = "";
       let example = value["example"];
 
-      if (parent === "" && only.length > 0 && !only.includes(key)) continue;
+      // For root level with only specified, include base fields and relations from with()
+      if (parent === "" && only.length > 0 && !only.includes(key)) {
+        // Check if this is a relation field
+        const isRelation =
+          typeof value["$ref"] !== "undefined" ||
+          (typeof value["items"] !== "undefined" &&
+            typeof value["items"]["$ref"] !== "undefined");
+
+        if (isRelation) {
+          // For relations, include if it's in the with() clause or has nested only specifications
+          const isInWithClause =
+            include.includes(key) || allBaseRelations.includes(key);
+          const hasNestedOnlySpecs = only.some((field) =>
+            field.startsWith(key + ".")
+          );
+          if (!isInWithClause && !hasNestedOnlySpecs) continue;
+        }
+        // For non-relation fields (base fields), always include them
+      }
 
       // for relations we can select the fields we want with this syntax
       // ex : comment.id,comment.createdAt
-      if (
-        parent !== "" &&
-        only.length > 0 &&
-        !only.includes(parent + "." + key)
-      )
-        continue;
+      if (parent !== "" && only.length > 0) {
+        const fieldPath = parent + "." + key;
+        const isFieldExplicitlyIncluded = only.includes(fieldPath);
+        const hasNestedFields = only.some((field) =>
+          field.startsWith(fieldPath + ".")
+        );
+
+        // Check if there are any only specifications for this parent path
+        const parentHasOnlySpecs = only.some((field) =>
+          field.startsWith(parent + ".")
+        );
+
+        // Only apply only filtering if there are actually only specs for this parent
+        if (
+          parentHasOnlySpecs &&
+          !isFieldExplicitlyIncluded &&
+          !hasNestedFields
+        ) {
+          continue;
+        }
+      }
 
       if (typeof value["$ref"] !== "undefined") {
         rel = value["$ref"].replace("#/components/schemas/", "");
@@ -264,7 +318,8 @@ export default class ExampleGenerator {
           typeof this.schemas[rel] !== "undefined" &&
           this.schemas[rel].description?.includes("Model") &&
           !include.includes("relations") &&
-          !include.includes(key)
+          !include.includes(key) &&
+          !allBaseRelations.includes(key)
         ) {
           continue;
         }
@@ -272,7 +327,8 @@ export default class ExampleGenerator {
         if (
           parent !== "" &&
           !include.includes(parent + ".relations") &&
-          !include.includes(parent + "." + key)
+          !include.includes(parent + "." + key) &&
+          !include.some((rel) => rel.startsWith(parent + "." + key + "."))
         ) {
           continue;
         }
@@ -333,7 +389,7 @@ export default class ExampleGenerator {
       case "object":
         return {};
       case "uuid":
-        return this.exampleByField("uuid"); 
+        return this.exampleByField("uuid");
       default:
         return null;
     }
@@ -365,7 +421,7 @@ export default class ExampleGenerator {
       price: 10.5,
       avatar: "https://example.com/avatar.png",
       url: "https://example.com",
-      uuid: "2b0bf725-d404-481f-b431-17f1182a5e57"
+      uuid: "2b0bf725-d404-481f-b431-17f1182a5e57",
     };
     if (typeof ex[field] !== "undefined") {
       return ex[field];

@@ -44,7 +44,7 @@ export class CommentParser {
       }
 
       if (line.startsWith("@description")) {
-        description = line.replace("@description ", "");
+        description = line.replace("@description ", "").trim();
       }
 
       if (line.startsWith("@operationId")) {
@@ -451,6 +451,7 @@ export class CommentParser {
     }
 
     const comments = extract(newdata);
+
     if (comments.length > 0) {
       comments.forEach((comment) => {
         if (comment.type !== "BlockComment") return;
@@ -514,8 +515,10 @@ export class RouteParser {
 export class ModelParser {
   exampleGenerator: ExampleGenerator;
   snakeCase: boolean;
-  constructor(snakeCase: boolean) {
+  enums: Record<string, any>;
+  constructor(snakeCase: boolean, enums: Record<string, any> = {}) {
     this.snakeCase = snakeCase;
+    this.enums = enums;
     this.exampleGenerator = new ExampleGenerator({});
   }
 
@@ -661,6 +664,21 @@ export class ModelParser {
       } else {
         if (standardTypes.includes(type.toLowerCase())) {
           type = type.toLowerCase();
+        } else if (this.enums[type]) {
+          // It's a known enum, treat as string type but save original type for enum detection
+          const originalType = type;
+          indicator = "type";
+          type = "string";
+          // Set enum values and example immediately
+          if (
+            this.enums[originalType].enum &&
+            this.enums[originalType].enum.length > 0
+          ) {
+            enums = this.enums[originalType].enum;
+            if (example === null || example === "string") {
+              example = this.enums[originalType].enum[0];
+            }
+          }
         } else {
           // assume its a custom interface
           indicator = "$ref";
