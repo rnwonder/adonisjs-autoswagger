@@ -1,5 +1,10 @@
 name: Manual Deploy
 run-name: Manual deployment to npmjs 📦
+
+permissions:
+  contents: write
+  actions: read
+
 on:
   push:
     tags:

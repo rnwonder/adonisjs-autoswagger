@@ -1,5 +1,11 @@
 name: Auto Release
 run-name: Auto-increment version and deploy 🚀
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -42,7 +48,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Use PAT_TOKEN if available, otherwise use GITHUB_TOKEN
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -213,11 +221,27 @@ jobs:
         run: |
           NEW_VERSION="${{ steps.new_version.outputs.NEW_VERSION }}"
           
+          # Create tag locally first
           git tag "v$NEW_VERSION"
-          git push origin main
-          git push origin "v$NEW_VERSION"
           
-          echo "✅ Created and pushed tag v$NEW_VERSION"
+          # Try to push to main branch and tag
+          if git push origin main && git push origin "v$NEW_VERSION"; then
+            echo "✅ Successfully pushed to main and created tag v$NEW_VERSION"
+          else
+            echo "❌ Failed to push to repository"
+            echo ""
+            echo "This is likely a permissions issue. To fix this:"
+            echo "1. Go to Repository Settings → Actions → General"
+            echo "2. Set 'Workflow permissions' to 'Read and write permissions'"
+            echo "3. Enable 'Allow GitHub Actions to create and approve pull requests'"
+            echo ""
+            echo "If you have branch protection rules, you may need to:"
+            echo "1. Create a Personal Access Token with 'repo' scope"
+            echo "2. Add it as repository secret 'PAT_TOKEN'"
+            echo ""
+            echo "For more details, see: https://docs.github.com/en/actions/security-guides/automatic-token-authentication"
+            exit 1
+          fi
 
       - name: Generate release changelog
         run: |
