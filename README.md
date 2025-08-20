@@ -19,9 +19,6 @@ This package is based on the excellent work by [ad-on-is](https://github.com/ad-
 ```bash
 pnpm i @rnwonder/adonis-autoswagger #using pnpm
 ```
-
-> **🚀 Automated Releases**: This package uses automated version management. New versions are automatically published when changes are merged to the main branch. Check the [releases page](https://github.com/rnwonder/adonisjs-autoswagger/releases) for the latest updates.
-
 ---
 
 ## ⭐️ Features
