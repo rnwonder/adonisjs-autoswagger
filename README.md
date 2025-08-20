@@ -10,6 +10,10 @@ Adonis AutoSwagger <br />
 
 ### Auto-Generate swagger docs for AdonisJS
 
+## � Crediats
+
+This package is based on the excellent work by [ad-on-is](https://github.com/ad-on-is) in the original [adonis-autoswagger](https://github.com/ad-on-is/adonis-autoswagger) project. This fork adds enhanced relation field selection capabilities, improved HMR support and other features while maintaining compatibility with the original API.
+
 ## 💻️ Install
 
 ```bash
@@ -26,6 +30,8 @@ pnpm i @rnwonder/adonis-autoswagger #using pnpm
 - Creates **schemas** automatically based on `app/Validators/*` (only for adonisJS v6)
 - Creates **schemas** automatically based on `app/Types/*` (only for adonisJS v6)
 - **Rich configuration** via comments
+- **Null value support** - Handle nullable fields with proper OpenAPI schemas
+- **Multiple response bodies** - Support multiple response variations for the same status code using OpenAPI `oneOf`
 - Works also in **production** mode
 - `node ace docs:generate` command
 
@@ -111,6 +117,52 @@ Route.get("/docs", async () => {
 ### 👍️ Done
 
 Visit `http://localhost:3333/docs` to see AutoSwagger in action.
+
+## HMR (Hot Module Reloading) Support
+
+If you're using `node ace serve --hmr`, validators might not appear in your Swagger documentation due to dynamic import limitations. To fix this, register your validators during app startup:
+
+### Step 1: Register Validators
+
+In your app startup file (e.g., `start/kernel.ts` or similar), register your validators:
+
+```typescript
+import { registerValidators } from "@rnwonder/adonis-autoswagger";
+import AddressValidator from "#validators/address_validator";
+import UserValidator from "#validators/user_validator";
+import OrderValidator from "#validators/order_validator";
+
+// Register all validators for HMR compatibility
+registerValidators({
+  AddressValidator,
+  UserValidator,
+  OrderValidator,
+});
+```
+
+### Step 2: Use Validators in Documentation
+
+Now you can use your validators in your controller annotations as usual:
+
+```typescript
+/**
+ * @requestBody <AddressValidator>
+ * @responseBody 200 - Address created successfully
+ */
+async create({ request }: HttpContextContract) {
+  // Your controller logic
+}
+```
+
+### Alternative: Use --watch instead of --hmr
+
+If you prefer not to register validators manually, you can use:
+
+```bash
+node ace serve --watch
+```
+
+instead of `--hmr`. This mode supports automatic validator discovery.
 
 ### Functions
 
@@ -225,6 +277,55 @@ Here's where you can set these and use them with `@paramUse()` and `@responseHea
 
 ---
 
+---
+
+## Null Value Support
+
+AutoSwagger now properly handles `null` values in JSON response bodies. You can document APIs that return either objects or `null` without parsing errors.
+
+### Example
+
+```ts
+/**
+ * @description Get user information
+ * @responseBody 200 - {"user": null, "message": "User not found"}
+ * @responseBody 200 - {"user": "<User>", "message": "User found"}
+ */
+public async getUser({ response }: HttpContextContract) {
+  // Your logic here
+}
+```
+
+This generates proper OpenAPI schemas with `nullable: true` for null values, following OpenAPI 3.0 specifications.
+
+## Multiple Response Bodies
+
+You can now document multiple response variations for the same HTTP status code. AutoSwagger automatically combines them using OpenAPI's `oneOf` schema with individual examples.
+
+### Example
+
+```ts
+/**
+ * @description User authentication endpoint
+ * @responseBody 200 - {"user": "<User>", "message": "Login successful", "token": "string"}
+ * @responseBody 200 - {"user": null, "message": "Invalid credentials", "token": null}
+ * @responseBody 429 - {"error": "Too many requests", "retryAfter": "number"}
+ */
+public async login({ request, response }: HttpContextContract) {
+  // Your authentication logic here
+}
+```
+
+### Benefits
+
+- **Clear API Documentation**: Shows all possible response variations
+- **Better Developer Experience**: API consumers understand all possible responses
+- **OpenAPI 3.0 Compliance**: Uses standard `oneOf` for multiple schemas
+- **Individual Examples**: Each response variation has its own example
+- **Backward Compatibility**: Single response bodies work exactly as before
+
+---
+
 # 💫 Extend Controllers
 
 ## Add additional documentation to your Controller-files
@@ -307,6 +408,14 @@ This format should be a valid openapi 3.x json.
 
 @responseBody <status> - {"foo": "bar", "baz": "<Model>"} //returns custom json object and also parses the model
 @responseBody <status> - ["foo", "bar"] //returns custom json array
+
+// 🆕 NEW: Null value support
+@responseBody <status> - {"user": null, "message": "Not found"} // properly handles null values
+
+// 🆕 NEW: Multiple response bodies for same status code
+@responseBody 200 - {"user": "<User>", "status": "success"} // success case
+@responseBody 200 - {"user": null, "status": "not_found"} // not found case
+// Both responses above will be combined using OpenAPI oneOf with separate examples
 ```
 
 ### Advanced Relation Field Selection
@@ -515,6 +624,33 @@ export default class SomeController {
    * @requestBody {"code": "xxxxxx"}
    */
   public async myCustomFunction({ request, response }: HttpContextContract) {}
+
+  /**
+   * 🆕 NEW FEATURES SHOWCASE
+   * @login
+   * @summary User authentication with multiple response scenarios
+   * @description Authenticate user with email and password, demonstrating null value support and multiple response bodies
+   * @responseBody 200 - {"user": "<User>", "token": "string", "message": "Login successful"} - Successful login
+   * @responseBody 200 - {"user": null, "token": null, "message": "Invalid credentials"} - Failed authentication
+   * @responseBody 200 - {"user": null, "token": null, "message": "Account not activated"} - Inactive account
+   * @responseBody 429 - {"error": "Too many attempts", "retryAfter": 300}
+   * @requestBody {"email": "string", "password": "string"}
+   */
+  public async login({ request, response }: HttpContextContract) {
+    // Multiple response variations will be automatically combined using OpenAPI oneOf
+    // Each response will have its own example in the documentation
+  }
+
+  /**
+   * @getUserProfile
+   * @summary Get user profile with nullable relations
+   * @description Demonstrates null value handling in complex nested objects
+   * @responseBody 200 - {"user": "<User>", "profile": {"bio": "string", "avatar": null}, "preferences": null}
+   * @responseBody 404 - {"user": null, "profile": null, "preferences": null, "error": "User not found"}
+   */
+  public async getUserProfile({ request, response }: HttpContextContract) {
+    // Null values in nested objects are now properly handled
+  }
 }
 ```
 
@@ -625,7 +761,7 @@ To make it work in production environments, additional steps are required
 
   - This should create a new file in `commands/DocsGenerate.ts`
 
-- Use the provided [`DocsGenerate.ts.examle`](https://github.com/ad-on-is/adonis-autoswagger/blob/main/DocsGenerate.ts.example)/[`DocsGeneratev6.ts.example`](https://github.com/ad-on-is/adonis-autoswagger/blob/main/DocsGeneratev6.ts.example) and put its contents into your newly created `DocsGenerate.ts`
+- Use the provided [`DocsGenerate.ts.examle`](https://github.com/rnwonder/adonisjs-autoswagger/blob/main/DocsGenerate.ts.example)/[`DocsGeneratev6.ts.example`](https://github.com/rnwonder/adonisjs-autoswagger/blob/main/DocsGeneratev6.ts.example) and put its contents into your newly created `DocsGenerate.ts`
 
 - Modify `/start/env.ts` as follows
 

@@ -35,6 +35,41 @@ export class AutoSwagger {
   private routeParser: RouteParser;
   private validatorParser: ValidatorParser;
   private customPaths = {};
+  
+  // Static validator registry for HMR compatibility
+  private static validatorRegistry: Record<string, any> = {};
+
+  /**
+   * Register a validator for use in swagger documentation
+   * This method should be called during app startup to register validators
+   * for HMR compatibility
+   */
+  static registerValidator(name: string, validator: VineValidator<any, any>) {
+    AutoSwagger.validatorRegistry[name] = validator;
+  }
+
+  /**
+   * Register multiple validators at once
+   */
+  static registerValidators(validators: Record<string, VineValidator<any, any>>) {
+    Object.entries(validators).forEach(([name, validator]) => {
+      AutoSwagger.registerValidator(name, validator);
+    });
+  }
+
+  /**
+   * Clear all registered validators (useful for testing)
+   */
+  static clearValidators() {
+    AutoSwagger.validatorRegistry = {};
+  }
+
+  /**
+   * Get all registered validators
+   */
+  static getRegisteredValidators() {
+    return { ...AutoSwagger.validatorRegistry };
+  }
 
   ui(url: string, options?: options) {
     const persistAuthString = options?.persistAuthorization
@@ -675,6 +710,39 @@ export class AutoSwagger {
 
   private async getValidators() {
     const validators = {};
+    
+    // First, try to use registered validators (HMR-compatible)
+    const registeredValidators = AutoSwagger.getRegisteredValidators();
+    if (Object.keys(registeredValidators).length > 0) {
+      if (this.options.debug) {
+        console.log("Using registered validators:", Object.keys(registeredValidators));
+      }
+      
+      for (const [key, validator] of Object.entries(registeredValidators)) {
+        try {
+          validators[key] = await this.validatorParser.validatorToObject(validator);
+          validators[key].description = key + " (Validator)";
+          if (this.options.debug) {
+            console.log(`Successfully processed registered validator: ${key}`);
+          }
+        } catch (e) {
+          if (this.options.debug) {
+            console.error(`Failed to process registered validator ${key}:`, e.message);
+          }
+        }
+      }
+      
+      if (this.options.debug) {
+        console.log(`Loaded ${Object.keys(validators).length} registered validators`);
+      }
+      return validators;
+    }
+
+    // Fallback to file-based loading (original method)
+    if (this.options.debug) {
+      console.log("No registered validators found, attempting file-based loading...");
+    }
+
     let p6 = path.join(this.options.appPath, "validators");
 
     if (typeof this.customPaths["#validators"] !== "undefined") {
@@ -695,27 +763,84 @@ export class AutoSwagger {
       console.log("Found validator files", files);
     }
 
-    try {
-      for (let file of files) {
-        if (/^[a-zA-Z]:/.test(file)) {
-          file = "file:///" + file;
+    // Try multiple import strategies for HMR compatibility
+    for (let file of files) {
+      try {
+        let val;
+        
+        // Strategy 1: Try standard dynamic import
+        try {
+          if (/^[a-zA-Z]:/.test(file)) {
+            file = "file:///" + file;
+          }
+          val = await import(file);
+        } catch (importError) {
+          if (this.options.debug) {
+            console.log(`Standard import failed for ${file}:`, importError.message);
+          }
+          
+          // Strategy 2: Try without file:// prefix for HMR
+          const cleanFile = file.replace("file:///", "");
+          try {
+            val = await import(cleanFile);
+          } catch (cleanImportError) {
+            if (this.options.debug) {
+              console.log(`Clean import failed for ${cleanFile}:`, cleanImportError.message);
+            }
+            
+            // Strategy 3: Try with query parameter to bypass HMR cache
+            try {
+              val = await import(`${cleanFile}?t=${Date.now()}`);
+            } catch (timestampError) {
+              if (this.options.debug) {
+                console.log(`Timestamp import failed for ${cleanFile}:`, timestampError.message);
+              }
+              
+              // Strategy 4: Try require() as last resort (for HMR compatibility)
+              try {
+                // Clear require cache to ensure fresh load
+                delete require.cache[require.resolve(cleanFile)];
+                val = require(cleanFile);
+                if (this.options.debug) {
+                  console.log(`Successfully used require() for ${cleanFile}`);
+                }
+              } catch (requireError) {
+                if (this.options.debug) {
+                  console.log(`Require failed for ${cleanFile}:`, requireError.message);
+                }
+                throw requireError;
+              }
+            }
+          }
         }
 
-        const val = await import(file);
+        // Process the successfully imported module
         for (const [key, value] of Object.entries(val)) {
           if (value.constructor.name.includes("VineValidator")) {
             validators[key] = await this.validatorParser.validatorToObject(
               value as VineValidator<any, any>
             );
             validators[key].description = key + " (Validator)";
+            if (this.options.debug) {
+              console.log(`Successfully loaded validator: ${key} from ${file}`);
+            }
           }
         }
+      } catch (e) {
+        if (this.options.debug) {
+          console.error(`Failed to load validator file ${file}:`, e.message);
+        }
+        // Continue with next file instead of breaking the entire process
+        continue;
       }
-    } catch (e) {
-      console.log(
-        "**You are probably using 'node ace serve --hmr', which is not supported yet. Use 'node ace serve --watch' instead.**"
-      );
-      console.error(e.message);
+    }
+
+    if (this.options.debug) {
+      console.log(`Loaded ${Object.keys(validators).length} validators:`, Object.keys(validators));
+      if (Object.keys(validators).length === 0 && files.length > 0) {
+        console.log("⚠️  No validators were loaded despite finding validator files. This might be due to HMR compatibility issues.");
+        console.log("💡 Try using 'node ace serve --watch' instead of '--hmr' for full validator support.");
+      }
     }
 
     return validators;

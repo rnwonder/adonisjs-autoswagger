@@ -24,6 +24,7 @@ export class CommentParser {
 
   constructor(options: options) {
     this.options = options;
+    this.exampleGenerator = new ExampleGenerator({});
   }
 
   private parseAnnotations(lines: string[]) {
@@ -52,10 +53,59 @@ export class CommentParser {
       }
 
       if (line.startsWith("@responseBody")) {
-        responses = {
-          ...responses,
-          ...this.parseResponseBody(line),
-        };
+        const newResponse = this.parseResponseBody(line);
+        const statusCode = Object.keys(newResponse)[0];
+        
+        if (responses[statusCode]) {
+          // If we already have a response for this status code, combine them using oneOf
+          const existingResponse = responses[statusCode];
+          const newResponseData = newResponse[statusCode];
+          
+          // Check if we already have oneOf structure
+          if (existingResponse.content?.["application/json"]?.schema?.oneOf) {
+            // Add to existing oneOf array
+            existingResponse.content["application/json"].schema.oneOf.push(
+              newResponseData.content["application/json"].schema
+            );
+          } else {
+            // Create oneOf structure with existing and new response
+            responses[statusCode] = {
+              ...existingResponse,
+              content: {
+                "application/json": {
+                  schema: {
+                    oneOf: [
+                      existingResponse.content["application/json"].schema,
+                      newResponseData.content["application/json"].schema
+                    ]
+                  },
+                  examples: {
+                    "example-1": {
+                      value: existingResponse.content["application/json"].example
+                    },
+                    "example-2": {  
+                      value: newResponseData.content["application/json"].example
+                    }
+                  }
+                }
+              }
+            };
+          }
+          
+          // If we already have oneOf with examples, add the new example
+          if (existingResponse.content?.["application/json"]?.examples) {
+            const exampleCount = Object.keys(existingResponse.content["application/json"].examples).length + 1;
+            existingResponse.content["application/json"].examples[`example-${exampleCount}`] = {
+              value: newResponseData.content["application/json"].example
+            };
+          }
+        } else {
+          // First response for this status code
+          responses = {
+            ...responses,
+            ...newResponse,
+          };
+        }
       }
       if (line.startsWith("@responseHeader")) {
         const header = this.parseResponseHeader(line);
@@ -388,8 +438,16 @@ export class CommentParser {
           const t = typeof json[key];
           const v = json[key];
           let value = v;
-          if (t === "object") {
+          if (t === "object" && v !== null) {
             value = this.jsonToObj(json[key]);
+          } else if (v === null) {
+            // Handle null values with nullable property
+            // For null values, we create a generic nullable schema
+            // Users can specify the actual type in a separate responseBody annotation
+            value = {
+              nullable: true,
+              example: null
+            };
           }
           if (t === "string" && v.includes("<") && v.includes(">")) {
             value = this.exampleGenerator.parseRef(v);

@@ -8,11 +8,16 @@ export default class ExampleGenerator {
   }
 
   jsonToRef(json) {
+    // Handle null values
+    if (json === null || json === undefined) {
+      return null;
+    }
+    
     const jsonObjectIsArray = Array.isArray(json);
     let out = {};
     let outArr = [];
     for (let [k, v] of Object.entries(json)) {
-      if (typeof v === "object") {
+      if (typeof v === "object" && v !== null) {
         if (!Array.isArray(v)) {
           v = this.jsonToRef(v);
         }
