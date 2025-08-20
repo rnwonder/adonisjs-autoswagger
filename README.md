@@ -163,16 +163,6 @@ node ace serve --watch
 
 instead of `--hmr`. This mode supports automatic validator discovery.
 
-### Functions
-
-- `async docs(routes, conf)`: get the specification in YAML format
-- `async json(routes, conf)`: get the specification in JSON format
-- `ui(path, conf)`: get default swagger UI
-- `rapidoc(path, style)`: get rapidoc UI
-- `scalar(path, proxyUrl)`: get scalar UI
-- `stoplight(path, theme)`: get stoplight elements UI
-- `jsonToYaml(json)`: can be used to convert `json()` back to yaml
-
 ---
 
 ## 💡 Compatibility

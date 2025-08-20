@@ -968,8 +968,12 @@ export class ValidatorParser {
         maximum?: number;
         choices?: any;
         pattern?: string;
+        example?: any;
       } = {};
       for (const v of p["validations"]) {
+        if (refs[v["ruleFnId"]].options?.example) {
+          meta = { ...meta, example: refs[v["ruleFnId"]].options.example };
+        }
         if (refs[v["ruleFnId"]].options?.min) {
           meta = { ...meta, minimum: refs[v["ruleFnId"]].options.min };
         }
@@ -988,6 +992,13 @@ export class ValidatorParser {
       // console.dir(validations, { depth: null });
       // console.log(min, max, choices, regex);
 
+      const getType = (type: string) => {
+        if (type == "literal") {
+          return "string";
+        }
+        return type;
+      };
+
       obj[p["fieldName"]] =
         p["type"] === "object"
           ? { type: "object", ...this.parseSchema(p, refs) }
@@ -1001,18 +1012,14 @@ export class ValidatorParser {
                       ...this.parseSchema(p["each"], refs),
                     }
                   : {
-                      type: "number",
-                      example: meta.minimum
-                        ? meta.minimum
-                        : this.exampleGenerator.exampleByType("number"),
+                      type: getType(p["each"]["type"]),
+                      example: meta.example ?? meta.minimum ?? this.exampleGenerator.exampleByType("number"),
                       ...meta,
                     },
             }
           : {
-              type: "number",
-              example: meta.minimum
-                ? meta.minimum
-                : this.exampleGenerator.exampleByType("number"),
+              type: getType(p["type"]),
+              example: meta.example ?? meta.minimum ?? this.exampleGenerator.exampleByType("number"),
               ...meta,
             };
       if (!p["isOptional"]) required.push(p["fieldName"]);
@@ -1134,6 +1141,7 @@ export class InterfaceParser {
           properties: {},
           required: [],
           startLine: i,
+          examples: {},
         });
         currentInterface = name;
         continue;
@@ -1155,6 +1163,9 @@ export class InterfaceParser {
         if (def) {
           const previousLine = i > 0 ? lines[i - 1].trim() : "";
           const isRequired = previousLine.includes("@required");
+          
+          // extract example value from comment @example(john)
+          const example = previousLine.match(/@example\((.*)\)/)?.[1];
 
           const [prop, type] = line.split(":").map((s) => s.trim());
           if (prop && type) {
@@ -1164,6 +1175,8 @@ export class InterfaceParser {
             if (isRequired || !prop.includes("?")) {
               def.required.push(cleanProp);
             }
+            
+            if (example) def.examples[cleanProp] = example;
           }
         }
       }
@@ -1194,6 +1207,9 @@ export class InterfaceParser {
           parsedProperties[key] = value;
         } else {
           parsedProperties[key] = this.parseType(value, key);
+        }
+        if (def.examples[key]) {
+          parsedProperties[key].example = def.examples[key];
         }
       }
 

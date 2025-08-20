@@ -8,3 +8,12 @@ export {
   clearValidators, 
   getRegisteredValidators 
 } from "./validator-registry";
+
+// Export AutoSwagger class and configure method for advanced usage
+export { AutoSwagger };
+
+// Export UI service
+export { UIService } from "./ui";
+
+// Export types
+export * from "./types";

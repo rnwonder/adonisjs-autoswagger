@@ -21,6 +21,7 @@ export interface options {
   authMiddlewares?: string[];
   defaultSecurityScheme?: string;
   ignoreDefaultPatterns?: boolean; // Option to disable default ignore patterns
+  skipValidatorRegistration?: boolean; // Option to skip validator registration entirely
 }
 
 export interface common {
