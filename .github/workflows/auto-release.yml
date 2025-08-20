@@ -151,23 +151,34 @@ jobs:
         run: |
           NEW_VERSION="${{ steps.new_version.outputs.NEW_VERSION }}"
           
-          # Check if tag already exists
-          if git tag -l | grep -q "^v$NEW_VERSION$"; then
-            echo "❌ Version v$NEW_VERSION already exists as a tag"
-            exit 1
-          fi
-          
-          # Check if version exists on npm
+          # Check if version exists on npm (this is the important check)
           NPM_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/@rnwonder/adonis-autoswagger/$NEW_VERSION")
           if [ "$NPM_STATUS" = "200" ]; then
             echo "❌ Version $NEW_VERSION already exists on npm"
             exit 1
           fi
           
-          echo "✅ Version $NEW_VERSION is available"
+          # Check if tag exists locally/remotely
+          TAG_EXISTS_LOCAL=$(git tag -l | grep -c "^v$NEW_VERSION$" || true)
+          TAG_EXISTS_REMOTE=$(git ls-remote --tags origin | grep -c "refs/tags/v$NEW_VERSION$" || true)
+          
+          if [ "$TAG_EXISTS_LOCAL" -gt 0 ] || [ "$TAG_EXISTS_REMOTE" -gt 0 ]; then
+            echo "⚠️ Git tag v$NEW_VERSION already exists, but version not published to npm"
+            echo "This usually means a previous workflow failed during publishing"
+            echo "Continuing with npm publish only..."
+            echo "SKIP_GIT_OPERATIONS=true" >> $GITHUB_ENV
+          else
+            echo "✅ Version $NEW_VERSION is available for both git and npm"
+            echo "SKIP_GIT_OPERATIONS=false" >> $GITHUB_ENV
+          fi
 
       - name: Update package.json version
         run: |
+          if [ "$SKIP_GIT_OPERATIONS" = "true" ]; then
+            echo "⏭️ Skipping package.json update (git operations skipped)"
+            exit 0
+          fi
+          
           NEW_VERSION="${{ steps.new_version.outputs.NEW_VERSION }}"
           # Update package.json with new version
           node -e "
@@ -179,6 +190,11 @@ jobs:
 
       - name: Update changelog
         run: |
+          if [ "$SKIP_GIT_OPERATIONS" = "true" ]; then
+            echo "⏭️ Skipping changelog update (git operations skipped)"
+            exit 0
+          fi
+          
           NEW_VERSION="${{ steps.new_version.outputs.NEW_VERSION }}"
           RELEASE_TYPE="${{ steps.release_type.outputs.RELEASE_TYPE }}"
           
@@ -207,6 +223,11 @@ jobs:
 
       - name: Commit version changes
         run: |
+          if [ "$SKIP_GIT_OPERATIONS" = "true" ]; then
+            echo "⏭️ Skipping version commit (git operations skipped)"
+            exit 0
+          fi
+          
           NEW_VERSION="${{ steps.new_version.outputs.NEW_VERSION }}"
           
           git config user.name "github-actions[bot]"
@@ -219,6 +240,11 @@ jobs:
 
       - name: Create and push tag
         run: |
+          if [ "$SKIP_GIT_OPERATIONS" = "true" ]; then
+            echo "⏭️ Skipping git tag creation (tag already exists)"
+            exit 0
+          fi
+          
           NEW_VERSION="${{ steps.new_version.outputs.NEW_VERSION }}"
           
           # Create tag locally first
@@ -271,6 +297,23 @@ jobs:
           echo "_Released on $(date)_" >> RELEASE_CHANGELOG.md
 
       - name: Create GitHub Release
+        run: |
+          if [ "$SKIP_GIT_OPERATIONS" = "true" ]; then
+            echo "⏭️ Skipping GitHub release creation (tag already exists, release may already exist)"
+            # Check if release already exists
+            RELEASE_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ steps.new_version.outputs.NEW_VERSION }}")
+            
+            if [ "$RELEASE_EXISTS" = "200" ]; then
+              echo "✅ GitHub release already exists for v${{ steps.new_version.outputs.NEW_VERSION }}"
+            else
+              echo "ℹ️ GitHub release does not exist yet, will be created by the action below"
+            fi
+          fi
+        
+      - name: Create GitHub Release (if needed)
+        if: env.SKIP_GIT_OPERATIONS != 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "v${{ steps.new_version.outputs.NEW_VERSION }}"

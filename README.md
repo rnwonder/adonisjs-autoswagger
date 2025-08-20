@@ -12,7 +12,7 @@ Adonis AutoSwagger <br />
 
 ## � Crediats
 
-This package is based on the excellent work by [ad-on-is](https://github.com/ad-on-is) in the original [adonis-autoswagger](https://github.com/ad-on-is/adonis-autoswagger) project. This fork adds enhanced relation field selection capabilities, improved HMR support and other features while maintaining compatibility with the original API. 
+This package is based on the excellent work by [ad-on-is](https://github.com/ad-on-is) in the original [adonis-autoswagger](https://github.com/ad-on-is/adonis-autoswagger) project. This fork adds enhanced relation field selection capabilities, improved HMR support and other features while maintaining compatibility with the original API.  
 
 ## 💻️ Install
 
