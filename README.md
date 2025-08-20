@@ -2,11 +2,11 @@
 Adonis AutoSwagger <br />
 <img src="https://upload.wikimedia.org/wikipedia/commons/a/ab/Swagger-logo.png" height="50" />
 </h1>
-<!-- 
-[![Version](https://img.shields.io/github/tag/ad-on-is/adonis-autoswagger.svg?style=flat?branch=main)]()
-[![GitHub stars](https://img.shields.io/github/stars/ad-on-is/adonis-autoswagger.svg?style=social&label=Star)]()
-[![GitHub watchers](https://img.shields.io/github/watchers/ad-on-is/adonis-autoswagger.svg?style=social&label=Watch)]()
-[![GitHub forks](https://img.shields.io/github/forks/ad-on-is/adonis-autoswagger.svg?style=social&label=Fork)]() -->
+
+[![Version](https://img.shields.io/github/tag/rnwonder/adonisjs-autoswagger.svg?style=flat?branch=main)]()
+[![GitHub stars](https://img.shields.io/github/stars/rnwonder/adonisjs-autoswagger.svg?style=social&label=Star)]()
+[![GitHub watchers](https://img.shields.io/github/watchers/rnwonder/adonisjs-autoswagger.svg?style=social&label=Watch)]()
+[![GitHub forks](https://img.shields.io/github/forks/rnwonder/adonisjs-autoswagger.svg?style=social&label=Fork)]()
 
 ### Auto-Generate swagger docs for AdonisJS
 
