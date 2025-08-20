@@ -48,5 +48,6 @@
     "quoteProps": "consistent",
     "bracketSpacing": true,
     "arrowParens": "always"
-  }
+  },
+  "packageManager": "pnpm@8.11.0"
 }

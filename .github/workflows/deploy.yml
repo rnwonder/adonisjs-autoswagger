@@ -1,25 +1,22 @@
-name: Deploy
-run-name: Deploying to npmjs 🥹🤞
+name: Manual Deploy
+run-name: Manual deployment to npmjs 📦
 on:
   push:
     tags:
       - "v*.*.*"
-      - "*.*.*"
 
 jobs:
-  Deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch full history for changelog generation
 
       - name: Validate semantic version tag
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          if [[ ! $TAG =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
-            echo "❌ Tag '$TAG' is not a valid semantic version (e.g., v1.0.0, 1.2.3-beta.1)"
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Tag '$TAG' is not a valid semantic version (e.g., v1.0.0)"
             exit 1
           fi
           echo "✅ Valid semantic version: $TAG"
@@ -42,7 +39,7 @@ jobs:
       - name: Validate package.json version matches tag
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          TAG_VERSION=${RELEASE_TAG#v}  # Remove 'v' prefix if present
+          TAG_VERSION=${RELEASE_TAG#v}
           if [[ "$PACKAGE_VERSION" != "$TAG_VERSION" ]]; then
             echo "❌ Package version ($PACKAGE_VERSION) doesn't match tag version ($TAG_VERSION)"
             exit 1
@@ -52,43 +49,19 @@ jobs:
       - name: Build project
         run: pnpm build
 
-      - name: Run tests (if any)
-        run: pnpm test || echo "No tests configured, skipping..."
-
-      - name: Generate changelog
-        run: |
-          echo "# Release $RELEASE_TAG" > RELEASE_CHANGELOG.md
-          echo "" >> RELEASE_CHANGELOG.md
-
-          # Get previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
-
-          if [[ -n "$PREV_TAG" ]]; then
-            echo "## Changes since $PREV_TAG" >> RELEASE_CHANGELOG.md
-            echo "" >> RELEASE_CHANGELOG.md
-            git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD >> RELEASE_CHANGELOG.md
-          else
-            echo "## Initial release" >> RELEASE_CHANGELOG.md
-            echo "" >> RELEASE_CHANGELOG.md
-            echo "- Initial release of @rnwonder/adonis-autoswagger" >> RELEASE_CHANGELOG.md
-          fi
-
-          echo "" >> RELEASE_CHANGELOG.md
-          echo "" >> RELEASE_CHANGELOG.md
-          echo "---" >> RELEASE_CHANGELOG.md
-          echo "_Generated on $(date)_" >> RELEASE_CHANGELOG.md
-
-          echo "📝 Generated changelog:"
-          cat RELEASE_CHANGELOG.md
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: "Release ${{ env.RELEASE_TAG }}"
-          body_path: RELEASE_CHANGELOG.md
+          body: |
+            ## Release ${{ env.RELEASE_TAG }}
+            
+            Manual release triggered by tag push.
+            
+            **Package**: @rnwonder/adonis-autoswagger@${{ env.RELEASE_TAG }}
           draft: false
-          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
