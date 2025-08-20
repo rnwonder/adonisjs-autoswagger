@@ -56,7 +56,14 @@ jobs:
           version: latest
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            echo "📦 Installing with frozen lockfile..."
+            pnpm install --frozen-lockfile
+          else
+            echo "📦 No lockfile found, installing without frozen lockfile..."
+            pnpm install --no-frozen-lockfile
+          fi
 
       - name: Build and test
         run: |
