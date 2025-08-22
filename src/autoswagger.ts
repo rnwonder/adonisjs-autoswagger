@@ -25,6 +25,7 @@ import { mergeParams, formatOperationId } from "./helpers";
 import ExampleGenerator, { ExampleInterfaces } from "./example";
 // @ts-expect-error moduleResolution:nodenext issue 54523
 import { VineValidator } from "@vinejs/vine";
+import { extractModelName } from './helpers.js';
 
 export class AutoSwagger {
   private options: options;
@@ -802,16 +803,28 @@ export class AutoSwagger {
     }
 
     for (let file of files) {
-      if (/^[a-zA-Z]:/.test(file)) {
-        file = "file:///" + file;
-      }
-
-      const val = await import(file);
-
-      for (const [key, value] of Object.entries(val)) {
-        if (key.indexOf("Serializer") > -1) {
-          serializers[key] = value;
+      try {
+        // Use the original file path with proper extension for importing
+        const originalFilePath = file;
+        
+        // Import the module
+        let val;
+        if (/^[a-zA-Z]:/.test(originalFilePath)) {
+          val = await import("file:///" + originalFilePath);
+        } else {
+          val = await import(originalFilePath);
         }
+
+        for (const [key, value] of Object.entries(val)) {
+          if (key.indexOf("Serializer") > -1) {
+            serializers[key] = value;
+          }
+        }
+      } catch (e) {
+        if (this.options.debug) {
+          console.error(`Failed to load serializer file ${file}:`, e.message);
+        }
+        continue;
       }
     }
 
@@ -844,12 +857,15 @@ export class AutoSwagger {
       console.log("Found model files", files);
     }
     for (let file of files) {
-      file = file.replace(".js", "");
-      const data = await readFile(file, "utf8");
-      file = file.replace(".ts", "");
-      const split = file.split("/");
-      let name = split[split.length - 1].replace(".ts", "");
-      file = file.replace("app/", "/app/");
+      // Use the original file path with proper extension for reading
+      const originalFilePath = file;
+      
+      // Extract clean model name without extensions
+      let name = extractModelName(file);
+      
+      // Read from the original path with proper extension
+      const data = await readFile(originalFilePath, "utf8");
+      
       const parsed = this.modelParser.parseModelProperties(data);
       if (parsed.name !== "") {
         name = parsed.name;
@@ -893,9 +909,12 @@ export class AutoSwagger {
     }
     const readFile = util.promisify(fs.readFile);
     for (let file of files) {
-      file = file.replace(".js", "");
-      const data = await readFile(file, "utf8");
-      file = file.replace(".ts", "");
+      // Use the original file path with proper extension for reading
+      const originalFilePath = file;
+      
+      // Read from the original path with proper extension
+      const data = await readFile(originalFilePath, "utf8");
+      
       interfaces = {
         ...interfaces,
         ...this.interfaceParser.parseInterfaces(data),
@@ -951,12 +970,11 @@ export class AutoSwagger {
 
     const readFile = util.promisify(fs.readFile);
     for (let file of files) {
-      file = file.replace(".js", "");
-      const data = await readFile(file, "utf8");
-      file = file.replace(".ts", "");
-      const split = file.split("/");
-      const name = split[split.length - 1].replace(".ts", "");
-      file = file.replace("app/", "/app/");
+      // Use the original file path with proper extension for reading
+      const originalFilePath = file;
+      
+      // Read from the original path with proper extension
+      const data = await readFile(originalFilePath, "utf8");
 
       const parsedEnums = enumParser.parseEnums(data);
       enums = {

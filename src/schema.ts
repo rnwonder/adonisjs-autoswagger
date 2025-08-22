@@ -15,6 +15,7 @@ import { ExampleInterfaces } from "./example";
 import { FileService } from "./file";
 import { options } from "./types";
 import { existsSync } from "fs";
+import { extractModelName } from './helpers.js';
 
 export class SchemaService {
   protected options: options;
@@ -184,12 +185,15 @@ export class SchemaService {
       console.log("Found model files", files);
     }
     for (let file of files) {
-      file = file.replace(".js", "");
-      const data = await readFile(file, "utf8");
-      file = file.replace(".ts", "");
-      const split = file.split("/");
-      let name = split[split.length - 1].replace(".ts", "");
-      file = file.replace("app/", "/app/");
+      // Use the original file path with proper extension for reading
+      const originalFilePath = file;
+      
+      // Extract clean model name without extensions
+      let name = extractModelName(file);
+      
+      // Read from the original path with proper extension
+      const data = await readFile(originalFilePath, "utf8");
+      
       const parsed = this.modelParser.parseModelProperties(data);
       if (parsed.name !== "") {
         name = parsed.name;
@@ -240,9 +244,12 @@ export class SchemaService {
     }
     const readFile = util.promisify(fs.readFile);
     for (let file of files) {
-      file = file.replace(".js", "");
-      const data = await readFile(file, "utf8");
-      file = file.replace(".ts", "");
+      // Use the original file path with proper extension for reading
+      const originalFilePath = file;
+      
+      // Read from the original path with proper extension
+      const data = await readFile(originalFilePath, "utf8");
+      
       interfaces = {
         ...interfaces,
         ...this.interfaceParser.parseInterfaces(data),
@@ -288,12 +295,11 @@ export class SchemaService {
 
     const readFile = util.promisify(fs.readFile);
     for (let file of files) {
-      file = file.replace(".js", "");
-      const data = await readFile(file, "utf8");
-      file = file.replace(".ts", "");
-      const split = file.split("/");
-      const name = split[split.length - 1].replace(".ts", "");
-      file = file.replace("app/", "/app/");
+      // Use the original file path with proper extension for reading
+      const originalFilePath = file;
+      
+      // Read from the original path with proper extension
+      const data = await readFile(originalFilePath, "utf8");
 
       const parsedEnums = enumParser.parseEnums(data);
       enums = {
