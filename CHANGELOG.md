@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.5] - 2025-11-02
+
+### Patch
+- Auto-generated patch release
+- Version increment: 1.1.4 → 1.1.5
+
+
 ## [1.1.4] - 2025-08-22
 
 ### Patch
