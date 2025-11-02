@@ -20,6 +20,7 @@ import {
 import { UIService } from "./ui";
 
 import type { options, AdonisRoutes, v6Handler, AdonisRoute } from "./types";
+import type { SwaggerUIOptions } from './index.js';
 
 import { mergeParams, formatOperationId } from "./helpers";
 import ExampleGenerator, { ExampleInterfaces } from "./example";
@@ -137,14 +138,52 @@ export class AutoSwagger {
     return await this.generate(routes, options);
   }
 
+  /**
+   * Process descriptions to convert escaped newlines to HTML <br> tags
+   * This ensures multi-line descriptions render properly in Swagger UI
+   */
+  private processDescriptionsForOutput(obj: any): any {
+    console.log('🔧 Processing descriptions for HTML output...');
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj !== 'object') return obj;
+
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.processDescriptionsForOutput(item));
+    }
+
+    const processed: any = {};
+    for (const key in obj) {
+      const val = obj[key];
+
+      if (key === 'description' && typeof val === 'string') {
+        // Convert escaped newlines to <br> tags for HTML rendering
+        // Handle multiple escape levels: \\\\n, \\n, and \n
+        let desc = val;
+        desc = desc.replace(/\\\\n/g, '<br>'); // handles "\\\\n"
+        desc = desc.replace(/\\n/g, '<br>');   // handles "\\n"
+        desc = desc.replace(/\n/g, '<br>');    // handles real newlines
+        processed[key] = desc;
+      } else if (typeof val === 'object' && val !== null) {
+        processed[key] = this.processDescriptionsForOutput(val);
+      } else {
+        processed[key] = val;
+      }
+    }
+    return processed;
+  }
+
   async writeFile(routes: any, options: options) {
     const json = await this.generate(routes, options);
-    const contents = this.jsonToYaml(json);
+    
+    // Process descriptions to convert \n to <br> tags
+    const processedJson = this.processDescriptionsForOutput(json);
+    
+    const contents = this.jsonToYaml(processedJson);
     const filePath = options.path + "swagger.yml";
     const filePathJson = options.path + "swagger.json";
 
     fs.writeFileSync(filePath, contents);
-    fs.writeFileSync(filePathJson, JSON.stringify(json, null, 2));
+    fs.writeFileSync(filePathJson, JSON.stringify(processedJson, null, 2));
   }
 
   private async readFile(rootPath, type = "yml") {
@@ -174,6 +213,19 @@ export class AutoSwagger {
       },
       ...options,
     };
+
+    // Log library version and location for debugging
+    try {
+      const packagePath = path.join(__dirname, '../package.json');
+      const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
+      const libraryLocation = path.resolve(__dirname, '..');
+      if (this.options.debug) {
+        console.log(`\n📚 Using @rnwonder/adonis-autoswagger v${pkg.version}`);
+        console.log(`📍 Location: ${libraryLocation}\n`);
+      }
+    } catch (e) {
+      // Silently fail if package.json cannot be read
+    }
 
     // Configure global validator registration settings from options
     AutoSwagger.configure({
@@ -483,7 +535,7 @@ export class AutoSwagger {
         let m = {
           summary: `${summary}${action !== "" ? ` (${action})` : "route"}`,
           description:
-            (description ? description + "\n\n" : "") +
+            (description ? description + "<br><br>" : "") +
             "_" +
             sourceFile +
             "_ - **" +
@@ -522,6 +574,61 @@ export class AutoSwagger {
     docs.tags = globalTags.filter((tag) => usedTags.includes(tag.name));
     docs.paths = paths;
     return docs;
+  }
+
+  /**
+   * Swagger UI middleware with enhanced customization options
+   */
+  static ui(
+    path: string,
+    app: any,
+    swaggerUIOptions?: SwaggerUIOptions
+  ): void {
+    const uiService = new UIService();
+    
+    // Serve Swagger UI initialization script
+    app.get(path + "/swagger-ui-init.js", async (ctx) => {
+      const swaggerDoc = ctx.swaggerDoc || undefined;
+      const initJS = uiService.generateSwaggerInitJS(swaggerDoc, swaggerUIOptions);
+      
+      ctx.response.header("Content-Type", "application/javascript");
+      ctx.response.send(initJS);
+    });
+
+    // Block access to package.json
+    app.get(path + "/package.json", async (ctx) => {
+      ctx.response.status(404).send("Not Found");
+    });
+
+    // Serve Swagger UI HTML
+    app.get(path, async (ctx) => {
+      const swaggerDoc = ctx.swaggerDoc || undefined;
+      const html = uiService.generateHTML(swaggerDoc, swaggerUIOptions);
+      
+      ctx.response.header("Content-Type", "text/html");
+      ctx.response.send(html);
+    });
+
+    // Serve static Swagger UI assets
+    app.get(path + "/*", async (ctx) => {
+      const filename = ctx.params["*"];
+      
+      if (!filename || filename === "/") {
+        return ctx.response.redirect(path);
+      }
+
+      // Security: prevent directory traversal
+      if (filename.includes("..") || filename.includes("~")) {
+        return ctx.response.status(403).send("Forbidden");
+      }
+
+      if (uiService.isSwaggerAsset(filename)) {
+        const filePath = uiService.getAssetPath(filename);
+        return ctx.response.download(filePath);
+      }
+
+      ctx.response.status(404).send("Not Found");
+    });
   }
 
   private async getDataBasedOnAdonisVersion(route: AdonisRoute) {

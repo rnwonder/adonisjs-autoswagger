@@ -1,5 +1,9 @@
 import HTTPStatusCode from "http-status-code";
-import { isJSONString, getBetweenBrackets } from "./helpers";
+import {
+  isJSONString,
+  getBetweenBrackets,
+  cleanMultiLineDescription,
+} from "./helpers";
 import util from "util";
 import extract from "extract-comments";
 import fs from "fs";
@@ -36,16 +40,59 @@ export class CommentParser {
     let requestBody;
     let parameters = {};
     let headers = {};
-    lines.forEach((line) => {
+
+    // First pass: handle multi-line descriptions
+    let processedLines: string[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+
+      if (line.startsWith("@description")) {
+        const descContent = line.replace("@description ", "").trim();
+
+        // Check if it's a quoted multi-line description
+        if (descContent.startsWith('"') && !descContent.endsWith('"')) {
+          // Multi-line description starting with quote
+          let fullDesc = descContent;
+          i++;
+          while (i < lines.length) {
+            const nextLine = lines[i];
+            fullDesc += "\n" + nextLine;
+            if (nextLine.trim().endsWith('"')) {
+              break;
+            }
+            i++;
+          }
+          // Clean and store the description
+          description = cleanMultiLineDescription(fullDesc);
+        } else if (
+          descContent.startsWith('"') &&
+          descContent.endsWith('"') &&
+          descContent.length > 1
+        ) {
+          // Single-line quoted description
+          description = descContent.slice(1, -1).trim();
+        } else {
+          // Old format: unquoted description
+          description = descContent;
+        }
+      }
+
+      processedLines.push(line);
+      i++;
+    }
+
+    // Second pass: process other annotations
+    processedLines.forEach((line) => {
       if (line.startsWith("@summary")) {
         summary = line.replace("@summary ", "");
       }
       if (line.startsWith("@tag")) {
         tag = line.replace("@tag ", "");
       }
-
       if (line.startsWith("@description")) {
-        description = line.replace("@description ", "").trim();
+        // Already handled in first pass
+        return;
       }
 
       if (line.startsWith("@operationId")) {
@@ -55,12 +102,12 @@ export class CommentParser {
       if (line.startsWith("@responseBody")) {
         const newResponse = this.parseResponseBody(line);
         const statusCode = Object.keys(newResponse)[0];
-        
+
         if (responses[statusCode]) {
           // If we already have a response for this status code, combine them using oneOf
           const existingResponse = responses[statusCode];
           const newResponseData = newResponse[statusCode];
-          
+
           // Check if we already have oneOf structure
           if (existingResponse.content?.["application/json"]?.schema?.oneOf) {
             // Add to existing oneOf array
@@ -76,27 +123,33 @@ export class CommentParser {
                   schema: {
                     oneOf: [
                       existingResponse.content["application/json"].schema,
-                      newResponseData.content["application/json"].schema
-                    ]
+                      newResponseData.content["application/json"].schema,
+                    ],
                   },
                   examples: {
                     "example-1": {
-                      value: existingResponse.content["application/json"].example
+                      value:
+                        existingResponse.content["application/json"].example,
                     },
-                    "example-2": {  
-                      value: newResponseData.content["application/json"].example
-                    }
-                  }
-                }
-              }
+                    "example-2": {
+                      value:
+                        newResponseData.content["application/json"].example,
+                    },
+                  },
+                },
+              },
             };
           }
-          
+
           // If we already have oneOf with examples, add the new example
           if (existingResponse.content?.["application/json"]?.examples) {
-            const exampleCount = Object.keys(existingResponse.content["application/json"].examples).length + 1;
-            existingResponse.content["application/json"].examples[`example-${exampleCount}`] = {
-              value: newResponseData.content["application/json"].example
+            const exampleCount =
+              Object.keys(existingResponse.content["application/json"].examples)
+                .length + 1;
+            existingResponse.content["application/json"].examples[
+              `example-${exampleCount}`
+            ] = {
+              value: newResponseData.content["application/json"].example,
             };
           }
         } else {
@@ -446,7 +499,7 @@ export class CommentParser {
             // Users can specify the actual type in a separate responseBody annotation
             value = {
               nullable: true,
-              example: null
+              example: null,
             };
           }
           if (t === "string" && v.includes("<") && v.includes(">")) {
@@ -999,6 +1052,11 @@ export class ValidatorParser {
         return type;
       };
 
+      // Convert choices to enum for OpenAPI spec
+      const enumField = meta.choices ? { enum: meta.choices } : {};
+      const metaWithoutChoices = { ...meta };
+      delete metaWithoutChoices.choices;
+
       obj[p["fieldName"]] =
         p["type"] === "object"
           ? { type: "object", ...this.parseSchema(p, refs) }
@@ -1013,14 +1071,24 @@ export class ValidatorParser {
                     }
                   : {
                       type: getType(p["each"]["type"]),
-                      example: meta.example ?? meta.minimum ?? this.exampleGenerator.exampleByType("number"),
-                      ...meta,
+                      example:
+                        meta.example ??
+                        meta.minimum ??
+                        this.exampleGenerator.exampleByType("number"),
+                      ...metaWithoutChoices,
+                      ...enumField,
                     },
             }
           : {
               type: getType(p["type"]),
-              example: meta.example ?? meta.minimum ?? this.exampleGenerator.exampleByType("number"),
-              ...meta,
+              example:
+                meta.example ??
+                (meta.choices
+                  ? meta.choices.join(" | ")
+                  : meta.minimum ??
+                    this.exampleGenerator.exampleByType("number")),
+              ...metaWithoutChoices,
+              ...enumField,
             };
       if (!p["isOptional"]) required.push(p["fieldName"]);
     }
@@ -1163,7 +1231,7 @@ export class InterfaceParser {
         if (def) {
           const previousLine = i > 0 ? lines[i - 1].trim() : "";
           const isRequired = previousLine.includes("@required");
-          
+
           // extract example value from comment @example(john)
           const example = previousLine.match(/@example\((.*)\)/)?.[1];
 
@@ -1175,7 +1243,7 @@ export class InterfaceParser {
             if (isRequired || !prop.includes("?")) {
               def.required.push(cleanProp);
             }
-            
+
             if (example) def.examples[cleanProp] = example;
           }
         }

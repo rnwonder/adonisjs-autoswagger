@@ -1,6 +1,6 @@
 {
   "name": "@rnwonder/adonis-autoswagger",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Auto-Generate swagger docs for AdonisJS",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -26,6 +26,7 @@
     "json-to-pretty-yaml": "^1.2.2",
     "lodash": "^4.17.21",
     "parse-imports": "^1.1.2",
+    "swagger-ui-dist": "^5.30.1",
     "typescript": "^5.8.2",
     "typescript-parser": "^2.6.1"
   },
